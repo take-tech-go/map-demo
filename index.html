@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lamp Map with Selection</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Leaflet Draw CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            max-width: 300px;
+        }
+
+        .info-panel h3 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        .info-panel p {
+            margin: 5px 0;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .lamp-marker {
+            border-radius: 50%;
+            background-color: #FFC107;
+            border: 2px solid #FF9800;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="info-panel">
+        <h3>Lamp Map Instructions</h3>
+        <p>💡 Click on the map to add lamps</p>
+        <p>🔷 Use the polygon tool to select lamps</p>
+        <p>📏 Use the line tool to measure distances</p>
+        <p>📋 Selected lamp details will appear in popup</p>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Leaflet Draw JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    
+    <!-- Turf.js for area calculation -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <script>
+        // Initialize the map
+        const map = L.map('map').setView([51.505, -0.09], 13);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Array to store all lamp markers
+        const lamps = [];
+        let lampIdCounter = 1;
+
+        // Create a custom yellow/orange icon for lamps
+        const lampIcon = L.divIcon({
+            className: 'lamp-marker',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+            popupAnchor: [0, -10]
+        });
+
+        // Handle map clicks to add lamps
+        map.on('click', function(e) {
+            const lampId = `L-${String(lampIdCounter).padStart(3, '0')}`;
+            lampIdCounter++;
+
+            const marker = L.marker(e.latlng, {
+                icon: lampIcon,
+                draggable: true
+            }).addTo(map);
+
+            marker.bindPopup(`<b>${lampId}</b>`);
+            
+            const lampData = {
+                id: lampId,
+                marker: marker,
+                latlng: e.latlng
+            };
+
+            lamps.push(lampData);
+            
+            // Add delete button to popup
+            const popupContent = `
+                <div style="text-align: center; min-width: 150px;">
+                    <b style="font-size: 14px;">${lampId}</b>
+                    <br><br>
+                    <button onclick="deleteLamp('${lampId}')" style="
+                        background-color: #f44336;
+                        color: white;
+                        border: none;
+                        padding: 6px 12px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                    ">🗑️ Remove Lamp</button>
+                </div>
+            `;
+            marker.bindPopup(popupContent);
+            
+            marker.on('dragend', function(event) {
+                lampData.latlng = event.target.getLatLng();
+            });
+        });
+
+        // Initialize the draw control
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        const drawControl = new L.Control.Draw({
+            edit: {
+                featureGroup: drawnItems,
+                remove: true
+            },
+            draw: {
+                polygon: true,
+                polyline: true,
+                circle: false,
+                rectangle: false,
+                marker: false,
+                circlemarker: false
+            }
+        });
+
+        map.addControl(drawControl);
+
+        // Handle polygon drawing completion
+        map.on(L.Draw.Event.CREATED, function(e) {
+            const layer = e.layer;
+            const layerType = e.layerType;
+            
+            // Clear previous selections
+            drawnItems.clearLayers();
+            
+            drawnItems.addLayer(layer);
+
+            // Handle polyline (line measurement)
+            if (layerType === 'polyline') {
+                const latlngs = layer.getLatLngs();
+                const lineCoords = latlngs.map(latlng => [latlng.lng, latlng.lat]);
+                const turfLine = turf.lineString(lineCoords);
+                const lengthMeters = turf.length(turfLine, { units: 'meters' });
+                const lengthKm = lengthMeters / 1000;
+                const lengthMiles = lengthMeters * 0.000621371;
+
+                const popupContent = `
+                    <div style="min-width: 200px;">
+                        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📏 Line Measurement</h4>
+                        <div style="padding: 10px; background: #e3f2fd; border-radius: 5px; border-left: 3px solid #2196F3;">
+                            <div style="font-weight: bold; color: #1976D2; margin-bottom: 5px;">Distance:</div>
+                            <div style="font-size: 13px; color: #555; line-height: 1.8;">
+                                ${lengthMeters.toFixed(2)} meters<br>
+                                ${lengthKm.toFixed(4)} kilometers<br>
+                                ${lengthMiles.toFixed(4)} miles
+                            </div>
+                        </div>
+                        <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                            Points: ${latlngs.length}
+                        </div>
+                    </div>
+                `;
+                layer.bindPopup(popupContent).openPopup();
+                return;
+            }
+
+            // Handle polygon
+            // Find lamps within the polygon
+            const selectedLamps = [];
+            const polygon = layer.getLatLngs()[0];
+
+            lamps.forEach(lamp => {
+                if (isPointInPolygon(lamp.latlng, polygon)) {
+                    selectedLamps.push(lamp);
+                }
+            });
+
+            // Calculate polygon area using Turf.js
+            const polygonCoords = polygon.map(latlng => [latlng.lng, latlng.lat]);
+            polygonCoords.push([polygon[0].lng, polygon[0].lat]); // Close the polygon
+            const turfPolygon = turf.polygon([polygonCoords]);
+            const areaSqMeters = turf.area(turfPolygon);
+            const areaSqKm = areaSqMeters / 1000000;
+            const areaHectares = areaSqMeters / 10000;
+
+            // Show popup with selected lamp details
+            if (selectedLamps.length > 0) {
+                let lampDetails = selectedLamps.map(lamp => {
+                    return `<div style="margin-bottom: 8px; padding: 5px; background: #f5f5f5; border-radius: 3px;">
+                        <div style="font-weight: bold; color: #2c3e50;">💡 ${lamp.id}</div>
+                        <div style="font-size: 12px; color: #666; margin-top: 3px;">
+                            Lat: ${lamp.latlng.lat.toFixed(6)}<br>
+                            Lng: ${lamp.latlng.lng.toFixed(6)}
+                        </div>
+                    </div>`;
+                }).join('');
+
+                const popupContent = `
+                    <div style="max-height: 300px; overflow-y: auto; min-width: 250px;">
+                        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">Selected Lamps (${selectedLamps.length})</h4>
+                        ${lampDetails}
+                        <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; border-left: 3px solid #2196F3;">
+                            <div style="font-weight: bold; color: #1976D2; margin-bottom: 5px;">📐 Polygon Area:</div>
+                            <div style="font-size: 13px; color: #555;">
+                                ${areaSqMeters.toFixed(2)} m²<br>
+                                ${areaHectares.toFixed(4)} hectares<br>
+                                ${areaSqKm.toFixed(6)} km²
+                            </div>
+                        </div>
+                    </div>
+                `;
+                layer.bindPopup(popupContent).openPopup();
+            } else {
+                // Still show area even if no lamps selected
+                const popupContent = `
+                    <div style="min-width: 200px;">
+                        <b>No lamps selected</b>
+                        <div style="margin-top: 10px; padding: 10px; background: #e3f2fd; border-radius: 5px; border-left: 3px solid #2196F3;">
+                            <div style="font-weight: bold; color: #1976D2; margin-bottom: 5px;">📐 Polygon Area:</div>
+                            <div style="font-size: 13px; color: #555;">
+                                ${areaSqMeters.toFixed(2)} m²<br>
+                                ${areaHectares.toFixed(4)} hectares<br>
+                                ${areaSqKm.toFixed(6)} km²
+                            </div>
+                        </div>
+                    </div>
+                `;
+                layer.bindPopup(popupContent).openPopup();
+            }
+        });
+
+        // Function to delete a lamp
+        function deleteLamp(lampId) {
+            const index = lamps.findIndex(lamp => lamp.id === lampId);
+            if (index !== -1) {
+                map.removeLayer(lamps[index].marker);
+                lamps.splice(index, 1);
+                map.closePopup();
+            }
+        }
+
+        // Ray casting algorithm to check if point is inside polygon
+        function isPointInPolygon(point, polygon) {
+            const lat = point.lat;
+            const lng = point.lng;
+            let inside = false;
+
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].lat;
+                const yi = polygon[i].lng;
+                const xj = polygon[j].lat;
+                const yj = polygon[j].lng;
+
+                const intersect = ((yi > lng) !== (yj > lng)) &&
+                    (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+                
+                if (intersect) {
+                    inside = !inside;
+                }
+            }
+
+            return inside;
+        }
+    </script>
+</body>
+</html>
