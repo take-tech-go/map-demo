@@ -122,6 +122,7 @@
         // Array to store all lamp markers
         const lamps = [];
         let lampIdCounter = 1;
+        let isDrawing = false; // Track if user is currently using drawing tools
 
         // Create a custom yellow/orange icon for lamps
         const lampIcon = L.divIcon({
@@ -131,8 +132,13 @@
             popupAnchor: [0, -10]
         });
 
-        // Handle map clicks to add lamps
+        // Handle map clicks to add lamps (only when not drawing)
         map.on('click', function(e) {
+            // Don't add lamps when using drawing tools
+            if (isDrawing) {
+                return;
+            }
+            
             const lampId = `L-${String(lampIdCounter).padStart(3, '0')}`;
             lampIdCounter++;
 
@@ -194,6 +200,15 @@
         });
 
         map.addControl(drawControl);
+
+        // Track when drawing starts and ends
+        map.on(L.Draw.Event.DRAWSTART, function() {
+            isDrawing = true;
+        });
+
+        map.on(L.Draw.Event.DRAWSTOP, function() {
+            isDrawing = false;
+        });
 
         // Handle polygon drawing completion
         map.on(L.Draw.Event.CREATED, function(e) {
