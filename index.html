@@ -66,6 +66,7 @@
         <p>🔷 Use the polygon tool to select lamps</p>
         <p>📏 Use the line tool to measure distances</p>
         <p>📋 Selected lamp details will appear in popup</p>
+        <p id="connection-status" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; font-weight: bold;">Checking connection...</p>
     </div>
 
     <!-- Leaflet JS -->
@@ -76,6 +77,37 @@
     
     <!-- Turf.js for area calculation -->
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <!-- Register Service Worker for offline support -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('Service Worker registered with scope:', registration.scope);
+                        
+                        // Check if online or offline
+                        function updateOnlineStatus() {
+                            const statusIndicator = document.getElementById('connection-status');
+                            if (navigator.onLine) {
+                                statusIndicator.textContent = '🟢 Online';
+                                statusIndicator.style.color = '#4CAF50';
+                            } else {
+                                statusIndicator.textContent = '🔴 Offline - Using Cache';
+                                statusIndicator.style.color = '#f44336';
+                            }
+                        }
+                        
+                        window.addEventListener('online', updateOnlineStatus);
+                        window.addEventListener('offline', updateOnlineStatus);
+                        updateOnlineStatus();
+                    })
+                    .catch((error) => {
+                        console.error('Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
 
     <script>
         // Initialize the map
