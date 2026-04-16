@@ -37,6 +37,40 @@
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
             max-width: 300px;
+            transition: transform 0.3s ease;
+        }
+
+        .info-panel.collapsed {
+            transform: translateX(calc(100% + 10px));
+        }
+
+        .toggle-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1001;
+            background: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: right 0.3s ease;
+        }
+
+        .lamp-label {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            font-size: 11px;
+            font-weight: bold;
+            color: #2196F3;
+            white-space: nowrap;
         }
 
         .info-panel h3 {
@@ -60,7 +94,9 @@
 <body>
     <div id="map"></div>
     
-    <div class="info-panel">
+    <button class="toggle-btn" id="toggleBtn" onclick="togglePanel()">☰</button>
+    
+    <div class="info-panel" id="infoPanel">
         <h3>Lamp Map Instructions</h3>
         <p>💡 Click on the map to add lamps</p>
         <p>🔷 Use the polygon tool to select lamps</p>
@@ -80,6 +116,14 @@
 
     <!-- Register Service Worker for offline support -->
     <script>
+        // Toggle info panel
+        function togglePanel() {
+            const panel = document.getElementById('infoPanel');
+            const btn = document.getElementById('toggleBtn');
+            panel.classList.toggle('collapsed');
+            btn.textContent = panel.classList.contains('collapsed') ? '☰' : '✕';
+        }
+
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js')
@@ -132,6 +176,16 @@
             popupAnchor: [0, -10]
         });
 
+        // Create a label icon for lamp IDs
+        function createLabelIcon(lampId) {
+            return L.divIcon({
+                className: 'lamp-label',
+                html: lampId,
+                iconSize: [60, 20],
+                iconAnchor: [-10, 10]
+            });
+        }
+
         // Handle map clicks to add lamps (only when not drawing)
         map.on('click', function(e) {
             // Don't add lamps when using drawing tools
@@ -152,8 +206,16 @@
             const lampData = {
                 id: lampId,
                 marker: marker,
+                label: null,
                 latlng: e.latlng
             };
+
+            // Add label beside the marker
+            const label = L.marker(e.latlng, {
+                icon: createLabelIcon(lampId),
+                interactive: false
+            }).addTo(map);
+            lampData.label = label;
 
             lamps.push(lampData);
             
@@ -177,6 +239,10 @@
             
             marker.on('dragend', function(event) {
                 lampData.latlng = event.target.getLatLng();
+                // Update label position
+                if (lampData.label) {
+                    lampData.label.setLatLng(lampData.latlng);
+                }
             });
         });
 
@@ -190,7 +256,12 @@
                 remove: true
             },
             draw: {
-                polygon: true,
+                polygon: {
+                    shapeOptions: {
+                        color: '#808080',
+                        weight: 2
+                    }
+                },
                 polyline: true,
                 circle: false,
                 rectangle: false,
@@ -319,6 +390,9 @@
             const index = lamps.findIndex(lamp => lamp.id === lampId);
             if (index !== -1) {
                 map.removeLayer(lamps[index].marker);
+                if (lamps[index].label) {
+                    map.removeLayer(lamps[index].label);
+                }
                 lamps.splice(index, 1);
                 map.closePopup();
             }
